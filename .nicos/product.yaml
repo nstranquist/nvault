@@ -1,0 +1,31 @@
+schema_version: 1
+id: product.nvault
+name: nvault
+surface: products
+kind: product
+status: experimental
+persona: Teams and agents that need zero-knowledge secrets they can inspect.
+jtbd: Seal secrets on the client so a server breach leaks only ciphertext.
+pricing: Apache-2.0 engine; hosted cloud is the paid product.
+launch: built
+license: Apache-2.0
+tags:
+  - secrets
+  - zero-knowledge
+  - cli
+  - go
+checks:
+  - name: version
+    command:
+      - go
+      - run
+      - ./cmd/nvault
+      - version
+  - name: crypto
+    command:
+      - go
+      - test
+      - ./crypto
+description: >-
+  Extracted nvault engine (envelope crypto + slim CLI + TS client).
+  Not public. nicos-tools keeps ndev vault inject and the hosted cloud.
