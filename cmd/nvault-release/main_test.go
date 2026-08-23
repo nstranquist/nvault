@@ -31,6 +31,8 @@ func TestReleaseWorkflowMatchesPrereleaseTags(t *testing.T) {
 	releaseWorkflow := string(releaseRaw)
 	for _, required := range []string{
 		`- "v*.*.*"`,
+		"attestations: write",
+		"actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8",
 		"gh release create",
 		"--prerelease",
 	} {
