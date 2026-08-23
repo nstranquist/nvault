@@ -15,11 +15,12 @@ the compatibility and security policies are stable.
    `dist`, `README.md`, `LICENSE`, and package metadata.
 5. Confirm that the public repository has private vulnerability reporting,
    branch protection, tag protection, and required CI checks.
-6. Confirm that the npm package uses trusted publishing with a GitHub-hosted
-   workflow and no long-lived publish token.
-7. Review the release workflow. A pushed `vX.Y.Z` tag publishes CLI archives,
-   SHA-256 checksums, a GitHub release, and the matching npm package. Configure
-   the repository and npm trusted publisher before the first tag.
+6. Confirm that `.github/workflows/npm-publish.yml` is the trusted publisher
+   for `@nvault/client`. Bind it to the `npm-release` GitHub environment. Do not
+   add a long-lived npm token.
+7. Review both release workflows. A pushed `vX.Y.Z` tag publishes CLI archives,
+   SHA-256 checksums, and a GitHub release. npm publication is a separate manual
+   action, so an unavailable npm account cannot make the CLI release partial.
 
 ## Publish
 
@@ -30,11 +31,17 @@ without explicit approval.
 1. Create and push an annotated `vX.Y.Z` tag from a clean, reviewed commit. The
    tag version must match the CLI, Makefile, changelog, and npm package.
 2. Let the tag-triggered release workflow build CLI archives and SHA-256
-   checksums from that exact tag.
-3. Let the workflow create the GitHub release and publish `client/` through npm
-   trusted publishing with provenance.
-4. Verify the public clone, `go install`, npm install, checksum, and provenance
-   from a clean external directory.
-5. Record public URLs and immutable digests in the release receipt.
+   checksums from that exact tag and create the GitHub release.
+3. Verify the public clone, `go install`, binary version, and checksums from a
+   clean external directory.
+4. Record the CLI URLs and immutable digests in the release receipt.
+5. Reserve `@nvault/client` in the npm account. Configure its trusted publisher
+   for repository `nstranquist/nvault`, workflow `npm-publish.yml`, and GitHub
+   environment `npm-release`.
+6. Manually run `Publish npm client` with the existing release tag. The workflow
+   checks out that tag, verifies the GitHub release, selects `next` for a
+   prerelease, and publishes with an OIDC identity and provenance.
+7. Verify npm installation and provenance from a clean external directory.
+   Add the package URL and integrity value to the release receipt.
 
 The release is public only after the external verification succeeds.
