@@ -36,5 +36,7 @@ checks:
 description: >-
   Apache-2.0 nvault engine with envelope crypto, protected local storage,
   strict configuration, a first-run wizard, process injection, and the
-  TypeScript client. It is locally publish-ready, but it is not public or
-  released. nicos-tools keeps the proprietary hosted cloud.
+  TypeScript client. The source repository is public. GitHub releases are the
+  authoritative CLI release record. The client stays unpublished until its npm
+  trusted publisher is configured. nicos-tools keeps the proprietary hosted
+  cloud.
