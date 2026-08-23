@@ -35,3 +35,19 @@ func TestRenderIsDeterministic(t *testing.T) {
 		t.Fatal("render output is not deterministic")
 	}
 }
+
+func TestGeneratedContentEqualAcceptsGitLineEndings(t *testing.T) {
+	output := "first\nsecond\n"
+	if !generatedContentEqual([]byte(output), output) {
+		t.Fatal("LF content should match")
+	}
+	if !generatedContentEqual([]byte("first\r\nsecond\r\n"), output) {
+		t.Fatal("CRLF checkout content should match canonical LF output")
+	}
+	if generatedContentEqual([]byte("first\rsecond\r"), output) {
+		t.Fatal("lone carriage returns must not be normalized")
+	}
+	if generatedContentEqual([]byte("first\r\nchanged\r\n"), output) {
+		t.Fatal("line-ending normalization must not hide content drift")
+	}
+}

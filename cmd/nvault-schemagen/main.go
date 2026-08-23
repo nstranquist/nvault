@@ -24,7 +24,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "nvault-schemagen: read %s: %v\n", args[1], err)
 			os.Exit(1)
 		}
-		if string(existing) != output {
+		if !generatedContentEqual(existing, output) {
 			fmt.Fprintf(os.Stderr, "nvault-schemagen: %s is out of date\n", args[1])
 			os.Exit(1)
 		}
@@ -43,6 +43,14 @@ func main() {
 		return
 	}
 	fmt.Print(output)
+}
+
+// generatedContentEqual permits Git's platform line-ending conversion while
+// keeping every generated character subject to the parity check. GitHub's
+// Windows runners check text files out with CRLF by default; render always
+// emits the repository's canonical LF form.
+func generatedContentEqual(existing []byte, output string) bool {
+	return strings.ReplaceAll(string(existing), "\r\n", "\n") == output
 }
 
 func render() string {
