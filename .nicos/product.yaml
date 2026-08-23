@@ -5,7 +5,7 @@ surface: products
 kind: product
 status: experimental
 persona: Teams and agents that need zero-knowledge secrets they can inspect.
-jtbd: Seal secrets on the client so a server breach leaks only ciphertext.
+jtbd: Protect local secrets and seal managed values on the client before sync.
 pricing: Apache-2.0 engine; hosted cloud is the paid product.
 launch: built
 license: Apache-2.0
@@ -25,7 +25,16 @@ checks:
     command:
       - go
       - test
-      - ./crypto
+      - ./...
+  - name: schema-parity
+    command:
+      - go
+      - run
+      - ./cmd/nvault-schemagen
+      - --check
+      - client/src/types.generated.ts
 description: >-
-  Extracted nvault engine (envelope crypto + slim CLI + TS client).
-  Not public. nicos-tools keeps ndev vault inject and the hosted cloud.
+  Apache-2.0 nvault engine with envelope crypto, protected local storage,
+  strict configuration, a first-run wizard, process injection, and the
+  TypeScript client. It is locally publish-ready, but it is not public or
+  released. nicos-tools keeps the proprietary hosted cloud.
