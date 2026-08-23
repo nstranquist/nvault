@@ -1,8 +1,24 @@
 {
   "name": "@nvault/client",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Typed TypeScript SDK for the nvault zero-knowledge secrets + parameter platform.",
+  "version": "0.2.0-alpha.1",
+  "description": "TypeScript implementation and client for the nvault zero-knowledge envelope format.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/nstranquist/nvault#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nstranquist/nvault.git",
+    "directory": "client"
+  },
+  "bugs": {
+    "url": "https://github.com/nstranquist/nvault/issues"
+  },
+  "keywords": [
+    "encryption",
+    "secrets",
+    "x25519",
+    "xchacha20-poly1305",
+    "zero-knowledge"
+  ],
   "comment:format": "CommonJS (no \"type\":\"module\") so require(\"libsodium-wrappers\") resolves the package's working CJS entry. Its 0.7.x ESM build is broken — its .mjs imports a libsodium.mjs it never ships. CJS is consumable by Node ESM (named-export interop) and every bundler.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,7 +36,18 @@
       "default": "./dist/client.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "LICENSE",
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc -p .",
     "watch": "tsc -p . -w",
@@ -34,5 +61,6 @@
   "devDependencies": {
     "@types/libsodium-wrappers": "^0.7.14",
     "typescript": "^7.0.2"
-  }
+  },
+  "packageManager": "pnpm@11.15.1+sha512.81350b07e53c9538a02f1f2303b4290fa2d7be04e56e2a970c4cc4b417dc761de196edabd49d55c7dc9580db81007c44143e4e3d7e462b3000d23c255122d065"
 }

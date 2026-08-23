@@ -1,67 +1,138 @@
 # @nvault/client
 
-Typed TypeScript SDK for the **nvault** zero-knowledge secrets + parameter
-platform. Two layers:
+`@nvault/client` implements the `nvault.enc.v1` envelope format and the hosted
+sync transport. Encryption and decryption run in the caller. The transport
+sends and receives ciphertext only.
 
-- **Transport** (`NvaultClient`) — talks to the nvault-cloud `/sync` HTTP API
-  with a service token. Uploads/downloads **ciphertext only**.
-- **Crypto** (`sealEnvelope` / `openEnvelope`) — client-side E2EE that is
-  byte-compatible with the Go reference (`nicos-dev/internal/vault/crypto`).
+Status: `0.2.0-alpha.1`. The package is locally publish-ready. It is not on npm
+until the release checklist records a public package and provenance attestation.
 
-## Type parity (no drift)
+## Install
 
-`src/types.generated.ts` is generated from the Go source by `nvault-schemagen`:
-
-```bash
-go run ./nicos-dev/cmd/nvault-schemagen packages/nvault-client/src/types.generated.ts
-# CI parity check:
-go run ./nicos-dev/cmd/nvault-schemagen --check packages/nvault-client/src/types.generated.ts
+```sh
+pnpm add @nvault/client
 ```
 
-The generator reads the live Go constants (`vault.Kind`, `vault.ValueType`,
-`crypto.FormatV1`/`AlgV1`), so a change in Go fails the `--check` until the TS is
-regenerated. This is the same pattern as `nvr-schemagen` /
-`scratchpad-schemagen`.
+Node.js 20 or later is required. Modern browsers are supported through a
+bundler.
 
-## Usage
+## Encrypt and decrypt
 
 ```ts
 import {
-  NvaultClient,
   generateIdentity,
-  sealEnvelope,
   openEnvelope,
+  rewrapEnvelope,
+  sealEnvelope,
 } from "@nvault/client";
 
-const me = await generateIdentity(); // X25519 keypair; keep me.privateKey secret
+const identity = await generateIdentity();
+const slot = "org_123/env_456/global/DB_URL";
+
+const envelope = await sealEnvelope(
+  new TextEncoder().encode("postgres://private"),
+  [{ id: "member-owner", public_key: identity.publicKey }],
+  slot,
+);
+
+const plaintext = await openEnvelope(envelope, identity, slot);
+
+// Rotate recipients without changing the encrypted body or nonce.
+const nextIdentity = await generateIdentity();
+const nextRecipients = [
+  { id: "member-next", public_key: nextIdentity.publicKey },
+];
+const rotated = await rewrapEnvelope(envelope, identity, slot, nextRecipients);
+```
+
+Always derive the expected slot from the item that the caller requested. Do
+not trust the `aad` field in downloaded data. This rule prevents whole-envelope
+relocation.
+
+Use `encodePrivateKey` only for a protected offline backup. Restore it with
+`identityFromPrivateKey`. The package does not store private keys for you.
+
+## Sync ciphertext
+
+```ts
+import { NvaultClient, sealEnvelope } from "@nvault/client";
+
 const client = new NvaultClient({
-  baseUrl: "https://<deployment>.convex.site",
-  org: "org_…",
-  env: "env_…",
+  baseUrl: "https://your-deployment.convex.site",
+  org: "org_123456789",
+  env: "env_123456789",
+  scope: "global",
   token: process.env.NVAULT_TOKEN!,
 });
 
-// push (seal client-side, upload ciphertext)
-const env = await sealEnvelope(
-  new TextEncoder().encode("super-secret"),
-  [{ id: me.publicKey, public_key: me.publicKey }],
-  "org_…/env_…/global/DB_URL",
+// Fetch the public keys and generation needed to seal a managed write.
+const policy = await client.policy();
+const versions = await client.versions(["DB_URL"]);
+const managedSlot = "org_123456789/env_123456789/global/DB_URL";
+const managedEnvelope = await sealEnvelope(
+  new TextEncoder().encode("postgres://private"),
+  policy.recipients,
+  managedSlot,
 );
-await client.push([{ key: "DB_URL", kind: "secret", ciphertext: JSON.stringify(env) }]);
+await client.push(
+  [
+    {
+      key: "DB_URL",
+      kind: "secret",
+      ciphertext: JSON.stringify(managedEnvelope),
+      expected_version: versions.results[0].version,
+    },
+  ],
+  { recipientRevision: policy.recipient_revision },
+);
 
-// pull (download ciphertext, open locally)
-const { 0: first } = await client.pull();
-const plain = await openEnvelope(JSON.parse(first.ciphertext), me);
+const items = await client.pull();
+
+// Compare-and-swap deletion. A stale version fails with HTTP 409.
+await client.delete("DB_URL", items[0].version);
+
+// For bounded-memory consumers, process one server page at a time.
+const page = await client.pullPage({ limit: 10 });
 ```
 
-## Build
+`pull` returns live items only. Never infer a deletion from an absent key. Use
+`delete` with the version from `pull` or `versions`. Every push and delete is a
+compare-and-swap operation; HTTP 409 means that the caller must fetch current
+state and make an explicit conflict decision.
 
-```bash
-pnpm install
-pnpm build       # tsc → dist/
-pnpm typecheck
+Service tokens are bearer credentials. Keep them out of source code and logs.
+The server validates envelope structure, slot binding, current recipient IDs,
+and the recipient revision. It cannot decrypt the value or prove that an opaque
+wrapped key opens with a specific private key. Authorized writers remain inside
+the availability trust boundary.
+
+The client requires HTTPS outside `localhost`, `127.0.0.1`, and `::1`. A private
+development network can set `allowInsecureHttp: true` explicitly. Do not use
+that option for an internet endpoint.
+
+## Limits
+
+- local envelope plaintext: 16 MiB;
+- hosted item plaintext before encryption: 256 KiB;
+- recipients: 1 to 1,024;
+- associated data: 4,096 UTF-8 bytes;
+- recipient ID: 256 UTF-8 bytes;
+- push batch: 100 items;
+- version query: 100 keys;
+- pull response: 10 items per cursor page.
+
+Malformed or oversized envelopes fail before a cryptographic operation runs.
+
+## Verify
+
+```sh
+corepack pnpm@11.15.1 install --frozen-lockfile
+corepack pnpm@11.15.1 test
+corepack pnpm@11.15.1 audit --prod
 ```
 
-Requires `libsodium-wrappers` (sealed box, NaCl-compatible) and
-`@noble/ciphers` (XChaCha20-Poly1305). The transport layer (`./client`) has no
-crypto dependency and can be used standalone.
+The tests build the Go CLI and prove Go-to-TypeScript and TypeScript-to-Go
+interoperability. The generated types come from `cmd/nvault-schemagen` in the
+repository root.
+
+Apache-2.0. See `LICENSE` in this package.
