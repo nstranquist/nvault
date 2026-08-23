@@ -19,13 +19,14 @@ of nvault Cloud. See [OSS_BOUNDARY.md](docs/OSS_BOUNDARY.md).
 
 ## Status
 
-Version `0.2.0-alpha.1` is the first public alpha candidate. The source is at
+Version [`v0.2.0-alpha.1`](https://github.com/nstranquist/nvault/releases/tag/v0.2.0-alpha.1)
+is the first public alpha release. The source is at
 [github.com/nstranquist/nvault](https://github.com/nstranquist/nvault). Use the
 [GitHub releases](https://github.com/nstranquist/nvault/releases) page as the
 authoritative record for tagged CLI releases and checksums. A checkout alone is
 not proof of a public release.
 
-The `@nvault/client` package is publish-ready, but it is not on npm yet. Its
+The `@nvault/client` package is publish-ready, but it is not on npm. Its
 first publish needs the package owner to reserve the package and configure npm
 trusted publishing for `.github/workflows/npm-publish.yml`. The CLI release is
 independent from that human account gate.
