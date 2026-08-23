@@ -19,10 +19,16 @@ of nvault Cloud. See [OSS_BOUNDARY.md](docs/OSS_BOUNDARY.md).
 
 ## Status
 
-Version `0.2.0-alpha.1` is an alpha release candidate. The code is locally
-publish-ready, but this checkout has no public remote, tag, GitHub release, or
-npm release. Do not describe it as publicly released until those external
-steps are complete.
+Version `0.2.0-alpha.1` is the first public alpha candidate. The source is at
+[github.com/nstranquist/nvault](https://github.com/nstranquist/nvault). Use the
+[GitHub releases](https://github.com/nstranquist/nvault/releases) page as the
+authoritative record for tagged CLI releases and checksums. A checkout alone is
+not proof of a public release.
+
+The `@nvault/client` package is publish-ready, but it is not on npm yet. Its
+first publish needs the package owner to reserve the package and configure npm
+trusted publishing for `.github/workflows/npm-publish.yml`. The CLI release is
+independent from that human account gate.
 
 ## Build from this checkout
 
@@ -35,7 +41,7 @@ corepack pnpm@11.15.1 --dir client install --frozen-lockfile
 make verify
 ```
 
-After public release, users can install the CLI with:
+After the first tagged release, users can install the CLI with:
 
 ```sh
 go install github.com/nstranquist/nvault/cmd/nvault@latest
