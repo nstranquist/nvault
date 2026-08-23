@@ -24,23 +24,44 @@ func TestNormalizeVersion(t *testing.T) {
 }
 
 func TestReleaseWorkflowMatchesPrereleaseTags(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
+	releaseRaw, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	workflow := string(raw)
+	releaseWorkflow := string(releaseRaw)
 	for _, required := range []string{
 		`- "v*.*.*"`,
-		"id-token: write",
-		"environment: npm-release",
-		"package-manager-cache: false",
+		"gh release create",
+		"--prerelease",
 	} {
-		if !strings.Contains(workflow, required) {
+		if !strings.Contains(releaseWorkflow, required) {
 			t.Fatalf("release workflow is missing %q", required)
 		}
 	}
-	if strings.Contains(workflow, `v[0-9]+.[0-9]+.[0-9]+*`) {
+	if strings.Contains(releaseWorkflow, "npm publish") {
+		t.Fatal("a missing npm account must not make the CLI release fail")
+	}
+	if strings.Contains(releaseWorkflow, `v[0-9]+.[0-9]+.[0-9]+*`) {
 		t.Fatal("release workflow uses a regular expression as a GitHub glob")
+	}
+
+	npmRaw, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "npm-publish.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	npmWorkflow := string(npmRaw)
+	for _, required := range []string{
+		"workflow_dispatch:",
+		"id-token: write",
+		"environment: npm-release",
+		"package-manager-cache: false",
+		"ref: refs/tags/${{ inputs.tag }}",
+		"npm install --global npm@11.6.2",
+		"npm publish --access public --provenance",
+	} {
+		if !strings.Contains(npmWorkflow, required) {
+			t.Fatalf("npm workflow is missing %q", required)
+		}
 	}
 }
 
