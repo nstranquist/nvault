@@ -52,7 +52,7 @@
     "build": "tsc -p .",
     "watch": "tsc -p . -w",
     "typecheck": "tsc -p . --noEmit",
-    "test": "pnpm build && node --test test/*.test.mjs",
+    "test": "tsc -p . && node --test test/*.test.mjs",
     "clean": "rm -rf dist"
   },
   "dependencies": {
