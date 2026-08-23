@@ -4,8 +4,9 @@
 sync transport. Encryption and decryption run in the caller. The transport
 sends and receives ciphertext only.
 
-Status: `0.2.0-alpha.1`. The package is locally publish-ready. It is not on npm
-until the release checklist records a public package and provenance attestation.
+Status: `0.2.0-alpha.1`. The package is publish-ready. It is not on npm until
+the package owner reserves `@nvault/client`, configures the trusted publisher,
+and the release checklist records both the public package and its provenance.
 
 ## Install
 
