@@ -15,7 +15,7 @@ import (
 )
 
 func TestCLIEncryptDecryptRoundTrip(t *testing.T) {
-	bin := filepath.Join(t.TempDir(), "nvault")
+	bin := filepath.Join(t.TempDir(), testBinaryName())
 	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = "."
 	if out, err := build.CombinedOutput(); err != nil {
@@ -57,8 +57,15 @@ func TestCLIEncryptDecryptRoundTrip(t *testing.T) {
 	}
 }
 
+func testBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "nvault.exe"
+	}
+	return "nvault"
+}
+
 func TestCLILocalStoreJourney(t *testing.T) {
-	bin := filepath.Join(t.TempDir(), "nvault")
+	bin := filepath.Join(t.TempDir(), testBinaryName())
 	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = "."
 	if out, err := build.CombinedOutput(); err != nil {
