@@ -1,6 +1,5 @@
-// Command nvault is the extracted CLI face of the envelope crypto core.
-// Local Keychain inject (`run`) still lives in nicos-tools until this
-// extract owns a store backend.
+// Command nvault is the CLI for the local secrets core.
+// Local encrypted-store commands are implemented in this repository.
 package main
 
 import (
@@ -9,46 +8,116 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/nstranquist/nvault/crypto"
+	versionpkg "github.com/nstranquist/nvault/version"
 )
+
+var version = versionpkg.Current
 
 func main() {
 	if len(os.Args) < 2 || os.Args[1] == "help" || os.Args[1] == "-h" || os.Args[1] == "--help" {
-		fmt.Fprint(os.Stdout, `nvault — extracted zero-knowledge envelope CLI
+		if _, err := fmt.Fprint(os.Stdout, `nvault — local zero-knowledge secrets CLI
 
 USAGE
   nvault version
+  nvault init [--config FILE] [--identity FILE] [--store DIR] [--scope NAME] [--passphrase-file FILE] [--no-config] [--json]
+  nvault doctor [--config FILE] [--passphrase-file FILE] [--json]
+  nvault config show [--config FILE] [--identity FILE] [--store DIR] [--scope NAME] [--passphrase-file FILE] [--json]
+  nvault config path [--config FILE]
+  nvault set KEY [--scope NAME] [--kind secret|param] [COMMON OPTIONS]
+  nvault get KEY [--scope NAME] [COMMON OPTIONS]
+  nvault list [--scope NAME] [--json] [COMMON OPTIONS]
+  nvault delete KEY [--scope NAME] [COMMON OPTIONS]
+  nvault run [--scope NAME] (--only KEY,... | --all) [COMMON OPTIONS] -- COMMAND [ARG...]
   nvault keygen
-  nvault encrypt --identity FILE   seal stdin; write envelope JSON
-  nvault decrypt --identity FILE   open envelope JSON from stdin
+  nvault encrypt (--identity FILE | --recipient ID=NVPUB) [--passphrase-file FILE] [--aad SLOT]
+  nvault decrypt [--identity FILE] [--passphrase-file FILE] [--aad SLOT]
 
-This extract is not public yet. nicos-tools ndev vault remains the
-operator inject path (ndev vault run --only KEY -- <cmd>).
-`)
+COMMON OPTIONS
+  --config FILE --identity FILE --store DIR --passphrase-file FILE
+
+set and encrypt read from stdin. get and decrypt write plaintext to stdout.
+init is an interactive first-run wizard when a passphrase source is not set. It
+creates a strict, non-secret configuration file, a passphrase-protected identity,
+and an encrypted store. run injects selected values only into its child process.
+NVAULT_IDENTITY_KEY can provide nvpriv_... when --identity is omitted.
+`); err != nil {
+			fatal(fmt.Errorf("write help: %w", err))
+		}
 		return
 	}
 	switch os.Args[1] {
 	case "version":
-		fmt.Fprintln(os.Stdout, "nvault 0.1.0-extract")
+		if _, err := fmt.Fprintf(os.Stdout, "nvault %s\n", version); err != nil {
+			fatal(fmt.Errorf("write version: %w", err))
+		}
+	case "init":
+		if err := initLocal(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+	case "doctor":
+		if err := doctorLocal(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+	case "config":
+		if err := configLocal(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+	case "set":
+		if err := setLocal(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+	case "get":
+		if err := getLocal(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+	case "list":
+		if err := listLocal(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+	case "delete":
+		if err := deleteLocal(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+	case "run":
+		if err := runLocal(os.Args[2:]); err != nil {
+			fatal(err)
+		}
 	case "keygen":
 		id, err := crypto.GenerateIdentity()
 		if err != nil {
 			fatal(err)
 		}
+		privateKey := id.Private()
+		privateEncoded := "nvpriv_" + base64.RawURLEncoding.EncodeToString(privateKey)
+		clear(privateKey)
 		if err := json.NewEncoder(os.Stdout).Encode(map[string]string{
 			"public":  id.Public.String(),
-			"private": "nvpriv_" + base64.RawURLEncoding.EncodeToString(id.Private()),
+			"private": privateEncoded,
 		}); err != nil {
 			fatal(err)
 		}
 	case "encrypt":
-		id := mustIdentity(os.Args[2:])
-		plain, err := io.ReadAll(os.Stdin)
+		opts, err := parseCryptoOptions(os.Args[2:], true)
 		if err != nil {
 			fatal(err)
 		}
-		env, err := crypto.Encrypt(plain, []crypto.Recipient{id.Recipient("self")}, "nvault-extract")
+		plain, err := io.ReadAll(io.LimitReader(os.Stdin, crypto.MaxPlaintextSize+1))
+		if err != nil {
+			fatal(err)
+		}
+		if len(plain) > crypto.MaxPlaintextSize {
+			fatal(fmt.Errorf("plaintext exceeds %d bytes", crypto.MaxPlaintextSize))
+		}
+		recipients := opts.recipients
+		if len(recipients) == 0 {
+			id := mustIdentity(opts.identityPath, opts.passphraseFile)
+			recipients = []crypto.Recipient{id.Recipient("self")}
+		}
+		env, err := crypto.Encrypt(plain, recipients, opts.aad)
+		clear(plain)
 		if err != nil {
 			fatal(err)
 		}
@@ -58,21 +127,27 @@ operator inject path (ndev vault run --only KEY -- <cmd>).
 			fatal(err)
 		}
 	case "decrypt":
-		id := mustIdentity(os.Args[2:])
-		raw, err := io.ReadAll(os.Stdin)
+		opts, err := parseCryptoOptions(os.Args[2:], false)
 		if err != nil {
 			fatal(err)
 		}
-		var env crypto.Envelope
-		if err := json.Unmarshal(raw, &env); err != nil {
-			fatal(err)
-		}
-		plain, err := crypto.Decrypt(&env, id)
+		id := mustIdentity(opts.identityPath, opts.passphraseFile)
+		raw, err := io.ReadAll(io.LimitReader(os.Stdin, 32<<20))
 		if err != nil {
 			fatal(err)
 		}
-		if _, err := os.Stdout.Write(plain); err != nil {
+		env, err := crypto.Unmarshal(raw)
+		if err != nil {
 			fatal(err)
+		}
+		plain, err := crypto.Decrypt(env, id, opts.aad)
+		if err != nil {
+			fatal(err)
+		}
+		_, writeErr := os.Stdout.Write(plain)
+		clear(plain)
+		if writeErr != nil {
+			fatal(writeErr)
 		}
 	default:
 		fmt.Fprintf(os.Stderr, "nvault: unknown command %q\n", os.Args[1])
@@ -80,48 +155,98 @@ operator inject path (ndev vault run --only KEY -- <cmd>).
 	}
 }
 
-func mustIdentity(args []string) crypto.Identity {
-	var path string
+type cryptoOptions struct {
+	identityPath   string
+	passphraseFile string
+	aad            string
+	recipients     []crypto.Recipient
+}
+
+func parseCryptoOptions(args []string, allowRecipients bool) (cryptoOptions, error) {
+	var opts cryptoOptions
 	for i := 0; i < len(args); i++ {
-		if args[i] == "--identity" {
+		switch args[i] {
+		case "--identity":
 			if i+1 >= len(args) {
-				fatal(fmt.Errorf("--identity requires a file"))
+				return cryptoOptions{}, fmt.Errorf("--identity requires a file")
 			}
-			path = args[i+1]
+			opts.identityPath = args[i+1]
 			i++
-			continue
+		case "--aad":
+			if i+1 >= len(args) {
+				return cryptoOptions{}, fmt.Errorf("--aad requires a slot")
+			}
+			opts.aad = args[i+1]
+			i++
+		case "--passphrase-file":
+			if i+1 >= len(args) {
+				return cryptoOptions{}, fmt.Errorf("--passphrase-file requires a file")
+			}
+			opts.passphraseFile = args[i+1]
+			i++
+		case "--recipient":
+			if !allowRecipients {
+				return cryptoOptions{}, fmt.Errorf("--recipient is valid only for encrypt")
+			}
+			if i+1 >= len(args) {
+				return cryptoOptions{}, fmt.Errorf("--recipient requires ID=NVPUB")
+			}
+			label, encoded, ok := strings.Cut(args[i+1], "=")
+			if !ok || label == "" || encoded == "" {
+				return cryptoOptions{}, fmt.Errorf("--recipient requires ID=NVPUB")
+			}
+			publicKey, err := crypto.ParsePublicKey(encoded)
+			if err != nil {
+				return cryptoOptions{}, err
+			}
+			opts.recipients = append(opts.recipients, crypto.Recipient{ID: label, PublicKey: publicKey})
+			i++
+		default:
+			return cryptoOptions{}, fmt.Errorf("unexpected arg %q", args[i])
 		}
-		fatal(fmt.Errorf("unexpected arg %q", args[i]))
 	}
-	if path == "" {
-		fatal(fmt.Errorf("--identity FILE is required"))
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		fatal(err)
-	}
-	var wire struct {
-		Private string `json:"private"`
-	}
-	if err := json.Unmarshal(raw, &wire); err != nil {
-		fatal(err)
-	}
-	const prefix = "nvpriv_"
-	if len(wire.Private) <= len(prefix) || wire.Private[:len(prefix)] != prefix {
-		fatal(fmt.Errorf("private key must start with %q", prefix))
-	}
-	priv, err := base64.RawURLEncoding.DecodeString(wire.Private[len(prefix):])
-	if err != nil {
-		fatal(err)
-	}
-	id, err := crypto.IdentityFromPrivate(priv)
+	return opts, nil
+}
+
+func mustIdentity(path, passphraseFile string) crypto.Identity {
+	id, err := loadIdentity(path, false, passphraseFile)
 	if err != nil {
 		fatal(err)
 	}
 	return id
 }
 
+func parsePrivate(encoded string) (crypto.Identity, error) {
+	const prefix = "nvpriv_"
+	encoded = strings.TrimPrefix(encoded, prefix)
+	var priv []byte
+	var err error
+	for _, encoding := range []*base64.Encoding{base64.RawURLEncoding, base64.RawStdEncoding, base64.StdEncoding} {
+		var candidate []byte
+		candidate, err = encoding.DecodeString(encoded)
+		if err == nil {
+			priv = candidate
+			break
+		}
+		clear(candidate)
+	}
+	if err != nil {
+		return crypto.Identity{}, fmt.Errorf("decode private key: %w", err)
+	}
+	defer clear(priv)
+	id, err := crypto.IdentityFromPrivate(priv)
+	if err != nil {
+		return crypto.Identity{}, err
+	}
+	return id, nil
+}
+
 func fatal(err error) {
+	if exited, ok := err.(interface{ ExitCode() int }); ok {
+		if code := exited.ExitCode(); code >= 0 {
+			os.Exit(code)
+		}
+	}
 	fmt.Fprintln(os.Stderr, "nvault:", err)
 	os.Exit(1)
 }
