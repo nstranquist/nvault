@@ -110,11 +110,27 @@ func TestArchivesPreserveExecutableMode(t *testing.T) {
 	if err := writeTarGzip(tarPath, files); err != nil {
 		t.Fatal(err)
 	}
-	tarFile, _ := os.Open(tarPath)
-	gzipReader, _ := gzip.NewReader(tarFile)
-	header, _ := tar.NewReader(gzipReader).Next()
+	tarFile, err := os.Open(tarPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzipReader, err := gzip.NewReader(tarFile)
+	if err != nil {
+		_ = tarFile.Close()
+		t.Fatal(err)
+	}
+	header, err := tar.NewReader(gzipReader).Next()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if header.Mode != 0o755 {
 		t.Fatalf("tar mode=%o", header.Mode)
+	}
+	if err := gzipReader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarFile.Close(); err != nil {
+		t.Fatal(err)
 	}
 	zipPath := filepath.Join(t.TempDir(), "nvault.zip")
 	if err := writeZip(zipPath, files); err != nil {
