@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: corepack pnpm@11.15.1 --dir client install --frozen-lockfile
+      - run: make publish-ready
+
+  github-release:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - run: go run ./cmd/nvault-release --version "${{ github.ref_name }}" --output dist
+      - name: Create immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/* --verify-tag --generate-notes --title "nvault ${{ github.ref_name }}"
+
+  npm:
+    needs: [verify, github-release]
+    runs-on: ubuntu-latest
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: corepack pnpm@11.15.1 --dir client install --frozen-lockfile
+      - run: corepack pnpm@11.15.1 --dir client test
+      - name: Select the npm distribution tag
+        id: npm-dist-tag
+        working-directory: client
+        run: node scripts/npm-dist-tag.mjs
+      - name: Publish with npm trusted publishing and provenance
+        working-directory: client
+        run: npm publish --access public --provenance --tag "${{ steps.npm-dist-tag.outputs.tag }}"
