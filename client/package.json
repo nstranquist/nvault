@@ -56,10 +56,10 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "libsodium-wrappers": "^0.7.15"
+    "libsodium-wrappers": "^0.8.4"
   },
   "devDependencies": {
-    "@types/libsodium-wrappers": "^0.7.14",
+    "@types/libsodium-wrappers": "^0.8.2",
     "typescript": "^7.0.2"
   },
   "packageManager": "pnpm@11.15.1+sha512.81350b07e53c9538a02f1f2303b4290fa2d7be04e56e2a970c4cc4b417dc761de196edabd49d55c7dc9580db81007c44143e4e3d7e462b3000d23c255122d065"
